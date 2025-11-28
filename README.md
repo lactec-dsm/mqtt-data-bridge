@@ -13,7 +13,7 @@ O **mqtt-data-bridge** é um software projetado para:
 
 ## Fluxo de Dados (Alto Nível)
 
-'''
+```java
 [Equipamento/Simulador MQTT] 
         → MQTT Broker 
                 → Consumer MQTT (validação + ingestão)
@@ -21,13 +21,13 @@ O **mqtt-data-bridge** é um software projetado para:
                                 → API (consulta)
                                         → Dashboards / Aplicações externas
 
-'''
+```
 
 ## Estrutura do projeto
 
 A estrutura foi desenhada para separar responsabilidades e facilitar a evolução: 
 
-'''
+```bash
 mqtt-data-bridge/
 │
 ├── mqtt_data_bridge/              # pacote principal
@@ -41,13 +41,13 @@ mqtt-data-bridge/
 ├── scripts/                       # scripts CLI para rodar módulos
 ├── tests/                         # testes unitários
 └── docs/                          # documentação
-'''
+```
 
 ## Modelo Canônico do Payload MQTT
 
 Todas as mensagens que chegam ao sistema devem seguir o formato:
 
-'''
+```json
 [
   {
     "timestamp": 1746085310003,
@@ -58,7 +58,7 @@ Todas as mensagens que chegam ao sistema devem seguir o formato:
   }
 ]
 
-'''
+```
 
 **Campos**
 
