@@ -94,6 +94,21 @@ docs = ["Sphinx", "furo"]
 test = ["objgraph", "psutil", "setuptools"]
 
 [[package]]
+name = "paho-mqtt"
+version = "2.1.0"
+description = "MQTT version 5.0/3.1.1 client class"
+optional = false
+python-versions = ">=3.7"
+groups = ["main"]
+files = [
+    {file = "paho_mqtt-2.1.0-py3-none-any.whl", hash = "sha256:6db9ba9b34ed5bc6b6e3812718c7e06e2fd7444540df2455d2c51bd58808feee"},
+    {file = "paho_mqtt-2.1.0.tar.gz", hash = "sha256:12d6e7511d4137555a3f6ea167ae846af2c7357b10bc6fa4f7c3968fc1723834"},
+]
+
+[package.extras]
+proxy = ["pysocks"]
+
+[[package]]
 name = "pydantic"
 version = "2.12.5"
 description = "Data validation using Python type hints"
@@ -414,4 +429,4 @@ typing-extensions = ">=4.12.0"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11"
-content-hash = "39b7930025ebea8c74c8a5f551266b412fa409ef13e6a43922fd74039d0690b5"
+content-hash = "40d7d7ec2866c9a6b70c6eb325c5c8a11655b3153ea15e588d9492ad08e39717"
