@@ -4,12 +4,19 @@ Sistema modular para coleta, ingestão e armazenamento de dados provenientes de 
 
 ## Visão Geral
 
-O **mqtt-data-bridge** é um software projetado para:
+O **mqtt-data-bridge** conecta dispositivos (ou simuladores) a um banco de dados através de:
 
-1. Receber mensagens MQTT de vários dispositivos de campo (por exemplo, Raspberry PI lendo ModBus).
-2. Validar e normalizar o payload usando um modelo canônico estruturado.
-3. Persistir os dados em um banco de dados relacional preparado para consultas analíticas.
-4. Servir esse conteúdo para dashboards, aplicações e serviços de análise. 
+1. Publicação MQTT.
+2. Consumer MQTT validando e transformando dados.
+3. Persistência via SQLAlchemy
+4. Repository Pattern para desacoplar armazenamento. 
+
+Esse projeto pode servir como:
+
+* Coletor MQTT real oara sensores/IoT
+* base para arquitetura de telemetria industrial
+* pipeline de exemplo para aplicar engenharia de dados
+* substituto moderno para scripts MQTT -> DB.
 
 ## Fluxo de Dados (Alto Nível)
 
@@ -22,6 +29,10 @@ O **mqtt-data-bridge** é um software projetado para:
                                         → Dashboards / Aplicações externas
 
 ```
+
+## Desenho da Arquitetura
+
+![Arquitetura do sistema](docs/images/arquitetura_fundo_branco.png "Arquitetura do sistema")
 
 ## Estrutura do projeto
 
@@ -114,4 +125,42 @@ A API fornece endpoints para que dashboards e sistemas externos consultem:
 * histórico de grandeza
 * últimos N pontos por dispositivo.
 * Médias e agregações simmples (futuro)
+
+## 📦 Instalação
+
+O Projeto foi construído usando o poetry, o Poetry oferece uma solução completa e integrada para o fluxo de trabalho de projetos Python, desde a configuração inicial até a distribuição final, a principal função é simplificar o processo de gerenciamento de dependências, empacotamento e publicação, e configuração simplificada. 
+
+1. Criar o ambiente poetry:
+
+```bash
+poetry install
+```
+
+2. Criar o .env
+```bash
+cp .env.example .env
+```
+Edite o .env conforme necessário. 
+
+4. Criar o banco e tabelas
+```bash
+poetry run python -m mqtt_data_bridge.database.modelagem_banco
+```
+Isso criará o arquivo mqtt_store.db (SQLite padrão).
+
+## Testando o Broker MQTT
+
+Usando Mosquitto:
+
+Instalação
+Ubuntu/WSL:
+
+```bash
+sudo apt install mosquitto mosquitto-clients
+```
+
+Testar assinatura
+```bash
+mosquitto_sub -h localhost -t "#" -v
+```
 
