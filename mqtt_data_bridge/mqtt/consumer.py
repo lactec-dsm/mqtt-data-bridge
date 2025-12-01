@@ -21,9 +21,9 @@ from typing import List
 from paho.mqtt import client as mqtt
 
 from mqtt_data_bridge.config.settings import settings
-from mqtt_data_bridge.database.modelagem_banco import criar_sessao, Medicao
-
+from mqtt_data_bridge.database.modelagem_banco import Medicao
 from mqtt_data_bridge.core.schemas import MedicaoMensagem
+from mqtt_data_bridge.database.repositorio import MedicaoRepositorio
 
 
 class MedicaoBuffer:
@@ -69,11 +69,11 @@ def converter_payload_para_medicoes(raw_payload: str) -> List[Medicao]:
     """
     Converte a string JSON recebida via MQTT em uma lista de objetos Medicao.
 
-    Fluxo:
-    - Faz o parse do JSON (espera-se uma lista de objetos).
-    - Valida cada item com o schema Pydantic MedicaoMensagem.
-    - Converte timestamp (ms) para datetime (UTC).
-    - Cria instâncias de Medicao (ORM) prontas para persistência.
+    Regras:
+    - Espera um JSON representando uma lista de objetos.
+    - Cada objeto deve seguir o schema MedicaoMensagem (Pydantic).
+    - Campos inválidos geram log e são ignorados, não derrubam o consumer.
+    - Em caso de JSON inválido ou formato não-lista, retorna lista vazia.
     """
 
     try:
@@ -90,7 +90,7 @@ def converter_payload_para_medicoes(raw_payload: str) -> List[Medicao]:
 
     for item in dados:
         try:
-            # Validação e parsing via Pydantic
+            # Validação e parsing via Pydantic (Pydantic v2)
             msg = MedicaoMensagem.model_validate(item)
         except Exception as exc:
             print(f"[CONSUMER] Payload inválido para MedicaoMensagem: {exc}")
@@ -176,18 +176,17 @@ def run_consumer():
     """
     Função principal do consumer MQTT.
 
-    Fluxo:
-    - Cria buffer de medições.
-    - Cria cliente MQTT configurado.
-    - Inicia o loop de rede (loop_forever).
-
-    Em versões futuras podemos:
-    - adicionar reconexão avançada;
-    - métricas de throughput;
-    - controle de rate limit com CONSUMER_RATE_LIMIT.
+    Agora:
+    - cria o repositório de Medicao;
+    - cria o buffer vinculado a esse repositório;
+    - cria o cliente MQTT e entra no loop.
     """
 
-    buffer = MedicaoBuffer(batch_size=settings.BATCH_SIZE)
+    repositorio = MedicaoRepositorio()
+    buffer = MedicaoBuffer(
+        batch_size=settings.BATCH_SIZE,
+        repositorio=repositorio,
+    )
     client = criar_cliente_mqtt(buffer)
 
     print(
@@ -198,7 +197,6 @@ def run_consumer():
     )
 
     try:
-        # loop_forever bloqueia a thread atual e cuida das reconexões básicas
         client.loop_forever()
     except KeyboardInterrupt:
         print("[CONSUMER] Encerrando consumer (Ctrl+C).")
