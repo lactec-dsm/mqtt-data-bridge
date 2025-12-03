@@ -34,9 +34,10 @@ class MedicaoBuffer:
     - Quando atinge BATCH_SIZE, dispara flush para o banco.
     """
 
-    def __init__(self, batch_size: int):
+    def __init__(self, batch_size: int, repositorio: MedicaoRepositorio):
         self.batch_size = batch_size
         self._buffer: List[Medicao] = []
+        self.repositorio = repositorio
 
     def adicionar(self, medicao: Medicao):
         self._buffer.append(medicao)
@@ -52,18 +53,13 @@ class MedicaoBuffer:
         if not self._buffer:
             return
 
-        sessao = criar_sessao()
         try:
-            sessao.add_all(self._buffer)
-            sessao.commit()
-            print(f"[CONSUMER] Gravadas {len(self._buffer)} medições no banco.")
+            gravadas = self.repositorio.salvar_em_batch(self._buffer)
+            print(f"[CONSUMER] Gravadas {gravadas} medições no banco.")
             self._buffer.clear()
         except Exception as exc:
-            sessao.rollback()
             print(f"[CONSUMER] Erro ao salvar medições: {exc}")
             # Aqui é possível logar melhor ou enviar para uma DLQ.
-        finally:
-            sessao.close()
 
 def converter_payload_para_medicoes(raw_payload: str) -> List[Medicao]:
     """
