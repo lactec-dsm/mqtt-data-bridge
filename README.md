@@ -104,19 +104,15 @@ Esse design facilita agregações por:
 
 ## Simulador MQTT
 
-Um conjunto de scripts gera dados sintéticos compatíveis com equipamentos reais.
-Ele publica no broker MQTT o payload canônico definido acima.
-
-Ideal para testes iniciais enquanto os dispositivos reais ainda não estão disponíveis. 
+Publica payloads canônicos em tópicos <deviceId>/data, permitindo testar toda a arquitetura sem depender de hardware real.
 
 ## Consumer MQTT
 
-O Coletor MQTT:
+Recebe mensagens, valida, converte para ORM e grava no banco usando batch e repositório.
 
-1. Se inscreve em tópicos MQTT dos dispositivos.
-2. Valida cada mensagem usando o schema pydantic.
-3. Transforma o timestamp para datetime. 
-4. Persiste a medição no banco via SQLAlchemy.
+## Respositório (Repository Pattern)
+
+Camada de acesso ao banco desacoplado do consumer
 
 ## API de Consulta
 
@@ -125,6 +121,14 @@ A API fornece endpoints para que dashboards e sistemas externos consultem:
 * histórico de grandeza
 * últimos N pontos por dispositivo.
 * Médias e agregações simmples (futuro)
+
+## Configuração Centralizada (settings.py)
+
+Usa Pydantic v2 para carregar e validar configurações via .env.
+
+## Testes Automatizados (pytest).
+
+Testes Unitários para o repositório e conversor de payload. 
 
 ## 📦 Instalação
 
@@ -164,3 +168,56 @@ Testar assinatura
 mosquitto_sub -h localhost -t "#" -v
 ```
 
+## Fluxo de execução
+
+Abaixo o passo a passo recomendado para rodar todo pipeline. 
+
+1. Executar o simulador MQTT
+O simulador publica em intervalos configuráveis no .env
+
+```bash
+poetry run python -m mqtt_data_bridge.mqtt.simulator.producer_simulado
+```
+Para Observar as mensagens no broker:
+
+```bash
+mosquitto_sub -h localhost -t "#" -v
+```
+
+2. Executar o Consumer MQTT
+
+O Consumer: 
+* conecta ao broker
+* recebe payloads canoônicos
+* valida via Pydantic
+* converte para ORM
+* salva no banco via repositório.
+
+Execute:
+
+```bash
+poetry run python -m mqtt_data_bridge.mqtt.consumer
+```
+
+Será exibido mensagens como:
+
+```csharp
+[CONSUMER] Recebido payload de SMA-SIM-DEVICE-001
+[CONSUMER] Gravadas 5 medições no banco.
+```
+
+3. Verificar Banco
+Modo SQLite CLI
+
+```bash
+sqlite3 mqtt_store.db
+.tables
+SELECT * FROM medicoes LIMIT 10;
+```
+
+4. Executar os testes
+Os testes rodam usando um SQLite em memória, sem afetar o banco real. 
+
+```bash
+poetry run python3 -m pytest 
+```
