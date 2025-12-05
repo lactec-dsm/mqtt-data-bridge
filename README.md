@@ -1,4 +1,4 @@
-## mqtt-data-brigge 
+## mqtt-data-bridge
 
 Sistema modular para coleta, ingestão e armazenamento de dados provenientes de dispositivos IoT via MQTT.
 
@@ -13,7 +13,7 @@ O **mqtt-data-bridge** conecta dispositivos (ou simuladores) a um banco de dados
 
 Esse projeto pode servir como:
 
-* Coletor MQTT real oara sensores/IoT
+* Coletor MQTT real para sensores/IoT
 * base para arquitetura de telemetria industrial
 * pipeline de exemplo para aplicar engenharia de dados
 * substituto moderno para scripts MQTT -> DB.
@@ -84,7 +84,7 @@ Todas as mensagens que chegam ao sistema devem seguir o formato:
 
 ## Modelo de Banco (SQLAlchemy)
 
-O Projeto armazenada as medições em uma tabela única normalizada:
+O Projeto armazena as medições em uma tabela única normalizada:
 
 * device_id
 * measurement_id
@@ -104,13 +104,13 @@ Esse design facilita agregações por:
 
 ## Simulador MQTT
 
-Publica payloads canônicos em tópicos <deviceId>/data, permitindo testar toda a arquitetura sem depender de hardware real.
+Publica payloads canônicos em tópicos `<deviceId>/data`, permitindo testar toda a arquitetura sem depender de hardware real.
 
 ## Consumer MQTT
 
 Recebe mensagens, valida, converte para ORM e grava no banco usando batch e repositório.
 
-## Respositório (Repository Pattern)
+## Repositório (Repository Pattern)
 
 Camada de acesso ao banco desacoplado do consumer
 
@@ -120,7 +120,7 @@ A API fornece endpoints para que dashboards e sistemas externos consultem:
 * valores recentes
 * histórico de grandeza
 * últimos N pontos por dispositivo.
-* Médias e agregações simmples (futuro)
+* Médias e agregações simples (futuro)
 
 ## Configuração Centralizada (settings.py)
 
@@ -130,27 +130,27 @@ Usa Pydantic v2 para carregar e validar configurações via .env.
 
 Testes Unitários para o repositório e conversor de payload. 
 
-## 📦 Instalação
+## 📦 Instalação e configuração rápida
 
-O Projeto foi construído usando o poetry, o Poetry oferece uma solução completa e integrada para o fluxo de trabalho de projetos Python, desde a configuração inicial até a distribuição final, a principal função é simplificar o processo de gerenciamento de dependências, empacotamento e publicação, e configuração simplificada. 
-
-1. Criar o ambiente poetry:
-
-```bash
-poetry install
-```
-
-2. Criar o .env
-```bash
-cp .env.example .env
-```
-Edite o .env conforme necessário. 
-
-4. Criar o banco e tabelas
-```bash
-poetry run python -m mqtt_data_bridge.database.modelagem_banco
-```
-Isso criará o arquivo mqtt_store.db (SQLite padrão).
+1. Instalar dependências com poetry:
+   ```bash
+   poetry install
+   ```
+2. Criar o `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+   Ajuste broker MQTT, `DB_URL`, nível de log etc.
+3. Criar o banco e tabelas (SQLite padrão cria `mqtt_store.db`):
+   ```bash
+   poetry run python -m mqtt_data_bridge.database.modelagem_banco
+   ```
+4. Configurações úteis (em `.env`):
+   - `LOG_LEVEL` (DEBUG/INFO/…)
+   - `LOG_JSON` (True para logs em JSON)
+   - `MQTT_CONNECT_MAX_RETRIES` / `MQTT_CONNECT_BACKOFF_BASE`
+   - `MQTT_PUBLISH_MAX_RETRIES` / `MQTT_PUBLISH_BACKOFF_BASE`
+   - `DB_FLUSH_MAX_RETRIES` / `DB_FLUSH_BACKOFF_BASE`
 
 ## Testando o Broker MQTT
 
@@ -176,7 +176,7 @@ Abaixo o passo a passo recomendado para rodar todo pipeline.
 O simulador publica em intervalos configuráveis no .env
 
 ```bash
-poetry run python -m mqtt_data_bridge.mqtt.simulator.producer_simulado
+poetry run python -m mqtt_data_bridge.mqtt.simulator.publisher
 ```
 Para Observar as mensagens no broker:
 
@@ -188,7 +188,7 @@ mosquitto_sub -h localhost -t "#" -v
 
 O Consumer: 
 * conecta ao broker
-* recebe payloads canoônicos
+* recebe payloads canônicos
 * valida via Pydantic
 * converte para ORM
 * salva no banco via repositório.
@@ -215,9 +215,33 @@ sqlite3 mqtt_store.db
 SELECT * FROM medicoes LIMIT 10;
 ```
 
-4. Executar os testes
+3. Subir a API de leitura (FastAPI + Uvicorn)
+   ```bash
+   poetry run uvicorn mqtt_data_bridge.api.main:app --reload --host 0.0.0.0 --port 8000
+   ```
+   - Documentação interativa: http://localhost:8000/docs
+   - Exemplos:
+     - `curl http://localhost:8000/ping`
+     - `curl "http://localhost:8000/medicoes/recentes?limite=10"`
+     - `curl "http://localhost:8000/serie/pAcGrid?device_id=SMA-SIM-DEVICE-001&limite=50"`
+
+4. Verificar Banco
+Modo SQLite CLI
+
+```bash
+sqlite3 mqtt_store.db
+.tables
+SELECT * FROM medicoes LIMIT 10;
+```
+
+5. Executar os testes
 Os testes rodam usando um SQLite em memória, sem afetar o banco real. 
 
 ```bash
-poetry run python3 -m pytest 
+poetry run pytest
 ```
+
+## Notas de logging
+
+- Logs são centralizados (`mqtt_data_bridge.utils.logger`) e respeitam `LOG_LEVEL`.
+- Para JSON estruturado, defina `LOG_JSON=true` no `.env`.
