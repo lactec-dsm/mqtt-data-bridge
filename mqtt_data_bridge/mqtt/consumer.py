@@ -15,6 +15,7 @@ de integração. Otimizações (batch, backpressure, etc.) vêm depois.
 """
 
 import json
+import time
 from datetime import datetime, timezone
 from typing import List
 
@@ -24,6 +25,9 @@ from mqtt_data_bridge.config.settings import settings
 from mqtt_data_bridge.database.modelagem_banco import Medicao
 from mqtt_data_bridge.core.schemas import MedicaoMensagem
 from mqtt_data_bridge.database.repositorio import MedicaoRepositorio
+from mqtt_data_bridge.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class MedicaoBuffer:
@@ -53,13 +57,33 @@ class MedicaoBuffer:
         if not self._buffer:
             return
 
-        try:
-            gravadas = self.repositorio.salvar_em_batch(self._buffer)
-            print(f"[CONSUMER] Gravadas {gravadas} medições no banco.")
-            self._buffer.clear()
-        except Exception as exc:
-            print(f"[CONSUMER] Erro ao salvar medições: {exc}")
-            # Aqui é possível logar melhor ou enviar para uma DLQ.
+        delay = settings.DB_FLUSH_BACKOFF_BASE
+        max_retries = settings.DB_FLUSH_MAX_RETRIES
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                gravadas = self.repositorio.salvar_em_batch(self._buffer)
+                logger.info("Gravadas %s medições no banco.", gravadas)
+                self._buffer.clear()
+                return
+            except Exception:
+                if attempt >= max_retries:
+                    logger.exception(
+                        "Falha ao salvar medições após %s tentativas; buffer será mantido.",
+                        attempt,
+                    )
+                    # Mantém o buffer para possível reprocessamento futuro.
+                    return
+
+                logger.warning(
+                    "Erro ao salvar medições (tentativa %s/%s). Retentando em %.2fs.",
+                    attempt,
+                    max_retries,
+                    delay,
+                    exc_info=True,
+                )
+                time.sleep(delay)
+                delay *= 2  # backoff exponencial
 
 def converter_payload_para_medicoes(raw_payload: str) -> List[Medicao]:
     """
@@ -75,11 +99,11 @@ def converter_payload_para_medicoes(raw_payload: str) -> List[Medicao]:
     try:
         dados = json.loads(raw_payload)
     except json.JSONDecodeError as exc:
-        print(f"[CONSUMER] Erro ao decodificar JSON: {exc}")
+        logger.warning("Erro ao decodificar JSON: %s", exc)
         return []
 
     if not isinstance(dados, list):
-        print("[CONSUMER] Payload inválido: esperado uma lista de medições.")
+        logger.warning("Payload inválido: esperado uma lista de medições.")
         return []
 
     medicoes: List[Medicao] = []
@@ -89,7 +113,7 @@ def converter_payload_para_medicoes(raw_payload: str) -> List[Medicao]:
             # Validação e parsing via Pydantic (Pydantic v2)
             msg = MedicaoMensagem.model_validate(item)
         except Exception as exc:
-            print(f"[CONSUMER] Payload inválido para MedicaoMensagem: {exc}")
+            logger.warning("Payload inválido para MedicaoMensagem: %s", exc)
             continue
 
         # Converte epoch ms → datetime UTC
@@ -122,10 +146,10 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage):
     try:
         payload_str = msg.payload.decode("utf-8")
     except UnicodeDecodeError as exc:
-        print(f"[CONSUMER] Erro ao decodificar payload como UTF-8: {exc}")
+        logger.warning("Erro ao decodificar payload como UTF-8: %s", exc)
         return
 
-    print(f"[CONSUMER] Mensagem recebida em {msg.topic}: {payload_str}")
+    logger.debug("Mensagem recebida em %s: %s", msg.topic, payload_str)
 
     medicoes = converter_payload_para_medicoes(payload_str)
 
@@ -134,6 +158,40 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage):
 
     if buffer.tamanho() >= settings.BATCH_SIZE:
         buffer.flush()
+
+
+def _conectar_com_retries(client: mqtt.Client):
+    """
+    Tenta conectar ao broker com retries e backoff exponencial.
+    """
+    delay = settings.MQTT_CONNECT_BACKOFF_BASE
+    max_retries = settings.MQTT_CONNECT_MAX_RETRIES
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            client.connect(
+                settings.MQTT_BROKER_HOST,
+                settings.MQTT_BROKER_PORT,
+                keepalive=60,
+            )
+            return
+        except Exception:
+            if attempt >= max_retries:
+                logger.exception(
+                    "Falha ao conectar ao broker MQTT após %s tentativas.",
+                    attempt,
+                )
+                raise
+
+            logger.warning(
+                "Erro ao conectar ao broker MQTT (tentativa %s/%s). Retentando em %.2fs.",
+                attempt,
+                max_retries,
+                delay,
+                exc_info=True,
+            )
+            time.sleep(delay)
+            delay *= 2
 
 def criar_cliente_mqtt(buffer: MedicaoBuffer) -> mqtt.Client:
     """
@@ -147,14 +205,14 @@ def criar_cliente_mqtt(buffer: MedicaoBuffer) -> mqtt.Client:
     client = mqtt.Client()
 
     def on_connect(client, userdata, flags, rc):
-        print(f"[CONSUMER] Conectado ao broker MQTT. RC={rc}")
+        logger.info("Conectado ao broker MQTT. RC=%s", rc)
         # Ao conectar, assinamos o root configurado
         topic_root = settings.MQTT_TOPIC_ROOT
         client.subscribe(topic_root)
-        print(f"[CONSUMER] Assinado tópico raiz: {topic_root}")
+        logger.info("Assinado tópico raiz: %s", topic_root)
 
     def on_disconnect(client, userdata, rc):
-        print(f"[CONSUMER] Desconectado do broker MQTT. RC={rc}")
+        logger.warning("Desconectado do broker MQTT. RC=%s", rc)
 
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
@@ -164,7 +222,7 @@ def criar_cliente_mqtt(buffer: MedicaoBuffer) -> mqtt.Client:
     client.user_data_set({"buffer": buffer})
 
     # Conecta usando host/porta do settings
-    client.connect(settings.MQTT_BROKER_HOST, settings.MQTT_BROKER_PORT, keepalive=60)
+    _conectar_com_retries(client)
 
     return client
 
@@ -185,17 +243,18 @@ def run_consumer():
     )
     client = criar_cliente_mqtt(buffer)
 
-    print(
-        f"[CONSUMER] Iniciando consumer. "
-        f"Broker={settings.MQTT_BROKER_HOST}:{settings.MQTT_BROKER_PORT}, "
-        f"Tópico raiz={settings.MQTT_TOPIC_ROOT}, "
-        f"Batch size={settings.BATCH_SIZE}"
+    logger.info(
+        "Iniciando consumer. Broker=%s:%s, Tópico raiz=%s, Batch size=%s",
+        settings.MQTT_BROKER_HOST,
+        settings.MQTT_BROKER_PORT,
+        settings.MQTT_TOPIC_ROOT,
+        settings.BATCH_SIZE,
     )
 
     try:
         client.loop_forever()
     except KeyboardInterrupt:
-        print("[CONSUMER] Encerrando consumer (Ctrl+C).")
+        logger.info("Encerrando consumer (Ctrl+C).")
     finally:
         client.disconnect()
 

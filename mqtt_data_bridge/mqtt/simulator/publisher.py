@@ -22,6 +22,9 @@ from typing import List
 from paho.mqtt import client as mqtt
 
 from mqtt_data_bridge.config.settings import settings
+from mqtt_data_bridge.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 class MQTTDeviceSimulator:
     """
@@ -94,19 +97,70 @@ class MQTTDeviceSimulator:
         payload = self.gerar_payload()
         payload_str = json.dumps(payload)
 
-        # Publicação MQTT (QoS 0 por enquanto, fire-and-forget)
-        result = self.client.publish(self.topic, payload_str)
+        delay = settings.MQTT_PUBLISH_BACKOFF_BASE
+        max_retries = settings.MQTT_PUBLISH_MAX_RETRIES
 
-        # Opcional: checar o resultado da publicação
-        if result.rc != mqtt.MQTT_ERR_SUCCESS:
-            # Aqui poderíamos logar ou tomar alguma ação.
-            # Como é esqueleto, apenas deixamos o código para referência.
-            print(
-                f"[SIMULADOR] Falha ao publicar em {self.topic}. "
-                f"RC={result.rc}"
+        for attempt in range(1, max_retries + 1):
+            # Publicação MQTT (QoS 0 por enquanto, fire-and-forget)
+            result = self.client.publish(self.topic, payload_str)
+
+            if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                logger.debug("Publicado em %s: %s", self.topic, payload_str)
+                return
+
+            if attempt >= max_retries:
+                logger.error(
+                    "Falha ao publicar em %s após %s tentativas. RC=%s",
+                    self.topic,
+                    attempt,
+                    result.rc,
+                )
+                return
+
+            logger.warning(
+                "Erro ao publicar em %s (tentativa %s/%s, RC=%s). Retentando em %.2fs.",
+                self.topic,
+                attempt,
+                max_retries,
+                result.rc,
+                delay,
             )
-        else:
-            print(f"[SIMULADOR] Publicado em {self.topic}: {payload_str}")
+            time.sleep(delay)
+            delay *= 2
+
+
+def _conectar_com_retries(client: mqtt.Client):
+    """
+    Tenta conectar ao broker MQTT com retries e backoff exponencial.
+    """
+    delay = settings.MQTT_CONNECT_BACKOFF_BASE
+    max_retries = settings.MQTT_CONNECT_MAX_RETRIES
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            client.connect(
+                settings.MQTT_BROKER_HOST,
+                settings.MQTT_BROKER_PORT,
+                keepalive=60,
+            )
+            return
+        except Exception:
+            if attempt >= max_retries:
+                logger.exception(
+                    "Falha ao conectar simulador ao broker MQTT após %s tentativas.",
+                    attempt,
+                )
+                raise
+
+            logger.warning(
+                "Erro ao conectar simulador ao broker MQTT (tentativa %s/%s). Retentando em %.2fs.",
+                attempt,
+                max_retries,
+                delay,
+                exc_info=True,
+            )
+            time.sleep(delay)
+            delay *= 2
 
 
 def criar_cliente_mqtt() -> mqtt.Client:
@@ -122,15 +176,15 @@ def criar_cliente_mqtt() -> mqtt.Client:
     client = mqtt.Client()
 
     def on_connect(client, userdata, flags, rc):
-        print(f"[SIMULADOR] Conectado ao broker MQTT com código RC={rc}")
+        logger.info("Simulador conectado ao broker MQTT. RC=%s", rc)
 
     def on_disconnect(client, userdata, rc):
-        print(f"[SIMULADOR] Desconectado do broker MQTT. RC={rc}")
+        logger.warning("Simulador desconectado do broker MQTT. RC=%s", rc)
 
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
 
-    client.connect(settings.MQTT_BROKER_HOST, settings.MQTT_BROKER_PORT, keepalive=60)
+    _conectar_com_retries(client)
 
     # Importante: inicia o loop de rede em background
     client.loop_start()
@@ -181,11 +235,11 @@ def run_simulator():
 
     intervalo = settings.SIMULATOR_INTERVAL_SECONDS
 
-    print(
-        f"[SIMULADOR] Iniciando simulador com "
-        f"{len(dispositivos)} dispositivos, "
-        f"{settings.SIMULATOR_MEASUREMENT_IDS} measurementIds, "
-        f"intervalo de {intervalo}s."
+    logger.info(
+        "Iniciando simulador com %s dispositivos, %s measurementIds, intervalo %ss.",
+        len(dispositivos),
+        settings.SIMULATOR_MEASUREMENT_IDS,
+        intervalo,
     )
 
     try:
@@ -197,7 +251,7 @@ def run_simulator():
             time.sleep(intervalo)
 
     except KeyboardInterrupt:
-        print("[SIMULADOR] Encerrando simulador (Ctrl+C recebido).")
+        logger.info("Encerrando simulador (Ctrl+C recebido).")
     finally:
         # Encerra o loop de rede MQTT de forma limpa
         client.loop_stop()

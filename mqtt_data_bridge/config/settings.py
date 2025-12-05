@@ -62,6 +62,16 @@ class Settings(BaseSettings):
         description="Raiz dos tópicos MQTT monitorados pelo coletor.",
     )
 
+    MQTT_CONNECT_MAX_RETRIES: int = Field(
+        5,
+        description="Tentativas de conexão ao broker MQTT antes de desistir.",
+    )
+
+    MQTT_CONNECT_BACKOFF_BASE: float = Field(
+        1.0,
+        description="Backoff inicial (segundos) entre tentativas de conexão MQTT.",
+    )
+
     # ---------------------------------------------------------
     # CONSUMER MQTT
     # ---------------------------------------------------------
@@ -112,6 +122,34 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = Field(
         "INFO",
         description="Nível de log padrão: DEBUG, INFO, WARNING, ERROR.",
+    )
+
+    LOG_JSON: bool = Field(
+        False,
+        description="Se verdadeiro, loga em JSON; caso contrário, texto simples.",
+    )
+
+    # ---------------------------------------------------------
+    # RETRIES E RESILIÊNCIA
+    # ---------------------------------------------------------
+    DB_FLUSH_MAX_RETRIES: int = Field(
+        3,
+        description="Tentativas de flush no banco antes de falhar.",
+    )
+
+    DB_FLUSH_BACKOFF_BASE: float = Field(
+        0.5,
+        description="Backoff inicial (segundos) para repetir flush no banco.",
+    )
+
+    MQTT_PUBLISH_MAX_RETRIES: int = Field(
+        3,
+        description="Tentativas de publicação MQTT antes de desistir.",
+    )
+
+    MQTT_PUBLISH_BACKOFF_BASE: float = Field(
+        0.5,
+        description="Backoff inicial (segundos) para repetir publicação MQTT.",
     )
 
     class Config:
