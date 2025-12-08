@@ -19,6 +19,7 @@ from sqlalchemy import (
     DateTime,
     Text,
     func,
+    Index,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -90,6 +91,16 @@ class Medicao(Base):
     """
 
     __tablename__ = "medicoes"
+    __table_args__ = (
+        # Índice composto para consultas por device/grandeza/tempo
+        Index(
+            "ix_medicoes_device_measure_ts",
+            "device_id",
+            "measurement_id",
+            "timestamp",
+        ),
+        {"sqlite_autoincrement": True},
+    )
 
     # Chave primária simples (surrogate key)
     id = Column(Integer, primary_key=True, index=True)

@@ -35,10 +35,11 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------
     # URL de conexão com o banco usada pelo SQLAlchemy.
     # Exemplo:
+    #   postgresql+psycopg2://mqtt_bridge:mqtt_bridge_pwd@localhost:5432/mqtt_bridge_db
     #   sqlite:///mqtt_store.db
     #   postgresql+psycopg2://user:pass@host:5432/mqtt_store
     DB_URL: str = Field(
-        "sqlite:///mqtt_store.db",
+        "postgresql+psycopg2://mqtt_bridge:mqtt_bridge_pwd@localhost:5432/mqtt_bridge_db",
         description="String de conexão do banco de dados (SQLAlchemy).",
     )
 

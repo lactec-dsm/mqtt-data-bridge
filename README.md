@@ -141,9 +141,9 @@ Testes Unitários para o repositório e conversor de payload.
    cp .env.example .env
    ```
    Ajuste broker MQTT, `DB_URL`, nível de log etc.
-3. Criar o banco e tabelas (SQLite padrão cria `mqtt_store.db`):
+3. Criar o banco e tabelas (Postgres padrão em `DB_URL`; se preferir SQLite, ajuste o `.env`):
    ```bash
-   poetry run python -m mqtt_data_bridge.database.modelagem_banco
+   poetry run alembic upgrade head
    ```
 4. Configurações úteis (em `.env`):
    - `LOG_LEVEL` (DEBUG/INFO/…)
@@ -226,12 +226,11 @@ SELECT * FROM medicoes LIMIT 10;
      - `curl "http://localhost:8000/serie/pAcGrid?device_id=SMA-SIM-DEVICE-001&limite=50"`
 
 4. Verificar Banco
-Modo SQLite CLI
+Modo psql (Postgres) ou SQLite, dependendo do `DB_URL`.
 
+Exemplo Postgres:
 ```bash
-sqlite3 mqtt_store.db
-.tables
-SELECT * FROM medicoes LIMIT 10;
+psql postgresql://mqtt_bridge:mqtt_bridge_pwd@localhost:5432/mqtt_bridge_db -c "SELECT * FROM medicoes LIMIT 10;"
 ```
 
 5. Executar os testes
